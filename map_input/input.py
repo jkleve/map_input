@@ -98,8 +98,6 @@ class Input(object):
                     mapped_data = self._joystick_axes[axis]
                     data = (mapped_data[Input.TYPE], mapped_data[Input.CALLBACK](value))
 
-                    event_queue.put(data)
-
             if data is not None:
                 event_queue.put(data)
 
