@@ -1,1 +1,1 @@
-from .input import event_queue, InputProcess
+from .input import InputProcess, InputThread

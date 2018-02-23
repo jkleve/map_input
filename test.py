@@ -1,13 +1,31 @@
-from map_input.input import event_queue, InputProcess
+from map_input.input import InputThread
 
 # from collections import namedtuple
 # Pitch = namedtuple('Pitch', 'value')
+
+# ======================================
+# controls.py
+from enum import Enum
+
+
+class Controls(Enum):
+    YAW = 0
+    PITCH = 1
+    ROLL = 2
+    THROTTLE = 3
+    TEST = 10
+
+
+class CommandEvent(Enum):
+    ENTER_FLIGHT_MODE = 0
+    EXIT_FLIGHT_MODE = 1
 
 YAW = 0
 PITCH = 1
 ROLL = 2
 THROTTLE = 3
 TEST = 10
+# ======================================
 
 
 def convert_to_flight_units(x):
@@ -114,38 +132,103 @@ mapping_two = {
     },
 }
 
+non_flight = {
+    'keyboard': {
+        'f': {
+            'key_down': (CommandEvent.ENTER_FLIGHT_MODE, ),
+        },
+    },
+    'joystick': {
+        'axis': {
+        },
+        'buttons': {
+        },
+    },
+}
+
+flight = {
+    'keyboard': {
+        'f': {
+            'key_down': (CommandEvent.EXIT_FLIGHT_MODE, ),
+        },
+        'w': {  # key
+            'key_down': (Controls.PITCH, FULL_NEGATIVE),  # event. these take raw values
+            'key_up': (Controls.PITCH, LEVEL),  # event
+        },
+        's': {
+            'key_down': (Controls.PITCH, FULL_POSITIVE),
+            'key_up': (Controls.PITCH, LEVEL),
+        },
+        'a': {
+            'key_down': (Controls.ROLL, FULL_NEGATIVE),
+            'key_up': (Controls.ROLL, LEVEL),
+        },
+        'd': {
+            'key_down': (Controls.ROLL, FULL_POSITIVE),
+            'key_up': (Controls.ROLL, LEVEL),
+        },
+    },
+    'joystick': {
+        'axis': {
+        },
+        'buttons': {
+        },
+    },
+}
+
+
+class UserInput(object):
+    def __init__(self, event_queue):
+        self._input = None
+        self.event_queue = event_queue
+
+    def flight(self):
+        self.stop()
+
+        self._input = InputThread(self.event_queue, flight)
+        self._input.start()
+
+    def non_flight(self):
+        self.stop()
+
+        self._input = InputThread(self.event_queue, non_flight)
+        self._input.start()
+
+    def stop(self):
+        if self._input is not None:
+            self._input.stop()
+
+    def run(self):
+        while True:
+            event = self.event_queue.get()
+            print(event)
+
+            if event[0] == CommandEvent.ENTER_FLIGHT_MODE:
+                self.flight()
+            if event[0] == CommandEvent.EXIT_FLIGHT_MODE:
+                self.non_flight()
+
 
 def test():
-    i = InputProcess(mapping)
-    i.start()
+    from queue import Queue
+    import signal
+    import sys
 
-    j = 0
+    event_queue = Queue()
 
-    while True:
-        event = event_queue.get()
-        print(event)
-        j += 1
-        if j > 10:
-            break
+    ui = UserInput(event_queue)
+    ui.non_flight()
 
-    i.stop()
-    print('exitting ...')
+    def signal_handler(sig_num, frame):
+        print('captured signal')
+        ui.stop()
+        sys.exit(0)
 
-    i = InputProcess(mapping_two)
-    i.start()
+    signal.signal(signal.SIGINT, signal_handler)
 
-    j = 0
-
-    while True:
-        event = event_queue.get()
-        print(event)
-        j += 1
-        if j > 10:
-            break
-
-    i.stop()
-    print('exitting ...')
+    ui.run()
 
 
 if __name__ == '__main__':
     test()
+
