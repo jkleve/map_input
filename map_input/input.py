@@ -1,5 +1,6 @@
 import pygame
 from multiprocessing import Manager, Process
+from time import sleep
 
 _manager = Manager()
 _mapping = _manager.dict()
@@ -10,8 +11,11 @@ _joysticks = list()
 
 def un_intialize():
     """Currently not used... the process stops by itself... maybe look into this?"""
+    global _initialized
+
     if _initialized:
-        pygame.event.post(pygame.QUIT)
+        pygame.event.post(pygame.event.Event(pygame.QUIT))
+        sleep(0.1)  # let objects pick up the pygame.QUIT event
 
     pygame.quit()
 
