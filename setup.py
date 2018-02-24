@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='map_input',
-    version='0.2.0',
+    version='0.2.1',
     description='Map keyboard & joystick buttons/axes to events',
     license='MIT',
     author='Jesse Kleve',
