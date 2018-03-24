@@ -1,5 +1,7 @@
-import pygame
+import logging
 from multiprocessing import Manager, Process
+from threading import Condition
+import pygame
 from time import sleep
 
 _manager = Manager()
@@ -7,6 +9,9 @@ _mapping = _manager.dict()
 # event_queue = _manager.Queue()
 _initialized = False
 _joysticks = list()
+
+
+log = logging.getLogger(__name__)
 
 
 def un_intialize():
@@ -42,7 +47,7 @@ def initialize(joystick=True):
         else:
             _joysticks.append(pygame.joystick.Joystick(controller))
             _joysticks[len(_joysticks)-1].init()
-            print('Controller \'{}\' connected'.format(_joysticks[0].get_name()))
+            log.info('Controller \'{}\' connected'.format(_joysticks[0].get_name()))
 
 
 class Input(object):
@@ -61,10 +66,24 @@ class Input(object):
             self.stop = stop
 
         self._mapping = mapping
+        self._mapping_lock = Condition()
         self._keyboard_map = mapping['keyboard']
         self._joystick_map = mapping['joystick']
         self._joystick_buttons = self._joystick_map['buttons']
         self._joystick_axes = self._joystick_map['axis']
+
+    @property
+    def mapping(self):
+        return self._mapping
+
+    @mapping.setter
+    def mapping(self, mapping):
+        with self._mapping_lock:
+            self._mapping = mapping
+            self._keyboard_map = mapping['keyboard']
+            self._joystick_map = mapping['joystick']
+            self._joystick_buttons = self._joystick_map['buttons']
+            self._joystick_axes = self._joystick_map['axis']
 
     def handle_event(self, event):
         types = {
@@ -77,33 +96,34 @@ class Input(object):
         event_type = event.type
         data = None
 
-        # Keyboard configuration: Map keys to an event
-        if event_type in [pygame.KEYDOWN, pygame.KEYUP]:
-            try:
-                key = event.unicode
-            except AttributeError:
-                key = chr(event.key)
+        with self._mapping_lock:
+            # Keyboard configuration: Map keys to an event
+            if event_type in [pygame.KEYDOWN, pygame.KEYUP]:
+                try:
+                    key = event.unicode
+                except AttributeError:
+                    key = chr(event.key)
 
-            # if the key and type is mapped in the mapping configuration, emit the event
-            if key in self._keyboard_map and types[event_type] in self._keyboard_map[key]:
-                data = self._keyboard_map[key][types[event_type]]  # keyboard mapping takes raw values
+                # if the key and type is mapped in the mapping configuration, emit the event
+                if key in self._keyboard_map and types[event_type] in self._keyboard_map[key]:
+                    data = self._keyboard_map[key][types[event_type]]  # keyboard mapping takes raw values
 
-        # Joystick configuration: Map joystick buttons to an event
-        elif event_type in [pygame.JOYBUTTONUP, pygame.JOYBUTTONDOWN]:
-            button = event.button
+            # Joystick configuration: Map joystick buttons to an event
+            elif event_type in [pygame.JOYBUTTONUP, pygame.JOYBUTTONDOWN]:
+                button = event.button
 
-            # if the button and type is mapped in the mapping configuration, emit the event
-            if button in self._joystick_buttons and types[event_type] in self._joystick_buttons[button]:
-                data = self._joystick_buttons[button][types[event_type]]  # joystick button mapping takes raw values
+                # if the button and type is mapped in the mapping configuration, emit the event
+                if button in self._joystick_buttons and types[event_type] in self._joystick_buttons[button]:
+                    data = self._joystick_buttons[button][types[event_type]]  # joystick button mapping takes raw values
 
-        # Joystick configuration: Map joystick axes to an event
-        elif event_type == pygame.JOYAXISMOTION:
-            axis = event.axis
-            value = event.value
+            # Joystick configuration: Map joystick axes to an event
+            elif event_type == pygame.JOYAXISMOTION:
+                axis = event.axis
+                value = event.value
 
-            if axis in self._joystick_axes:
-                mapped_data = self._joystick_axes[axis]
-                data = (mapped_data[Input.TYPE], mapped_data[Input.CALLBACK](value))
+                if axis in self._joystick_axes:
+                    mapped_data = self._joystick_axes[axis]
+                    data = (mapped_data[Input.TYPE], mapped_data[Input.CALLBACK](value))
 
         if data is not None:
             self.event_queue.put(data)
@@ -125,7 +145,7 @@ class Input(object):
 
 class InputThread(object):
     def __init__(self, event_queue, mapping=None):
-        initialize()
+        initialize(joystick=True)
         from threading import Thread, Event
 
         self.stop_flag = Event()
@@ -139,7 +159,7 @@ class InputThread(object):
 
     def stop(self):
         self.stop_flag.set()
-        self.thread.join()
+        self.thread.join(0.1)
 
 
 class InputProcess(object):
@@ -153,8 +173,8 @@ class InputProcess(object):
         self.process.start()
 
     def stop(self):
-        print('Terminating Input object')
+        log.debug('Terminating Input object')
         self.process.terminate()
-        print('Joining Input object')
+        log.debug('Joining Input object')
         self.process.join()
-        print('Input object DONE')
+        log.debug('Input object DONE')
